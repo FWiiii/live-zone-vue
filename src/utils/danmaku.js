@@ -1,4 +1,5 @@
 import { md5 } from 'js-md5'
+import pako from 'pako'
 
 import HUYALIB from './lib'
 
@@ -180,7 +181,84 @@ const getPlatformList = function () {
   return platformList
 }
 
+const readInt = function (buffer, start, len) {
+  let result = 0
+  for (let i = len - 1; i >= 0; i--)
+    result += 256 ** (len - i - 1) * buffer[start + i]
+
+  return result
+}
+const writeInt = function (buffer, start, len, value) {
+  let i = 0
+  while (i < len) {
+    buffer[start + i] = value / 256 ** (len - i - 1)
+    i++
+  }
+}
+const encode = function (str, op) {
+  const data = textEncoder.encode(str)
+  const packetLen = 16 + data.byteLength
+  const header = [0, 0, 0, 0, 0, 16, 0, 1, 0, 0, 0, op, 0, 0, 0, 1]
+  writeInt(header, 0, 4, packetLen)
+  return (new Uint8Array(header.concat(...data))).buffer
+}
+const decode = function (blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = function (e) {
+      const buffer = new Uint8Array(e.target.result)
+      const result = {}
+      result.packetLen = readInt(buffer, 0, 4)
+      result.headerLen = readInt(buffer, 4, 2)
+      result.ver = readInt(buffer, 6, 2)
+      result.op = readInt(buffer, 8, 4)
+      result.seq = readInt(buffer, 12, 4)
+      if (result.op === 5) {
+        result.body = []
+        let offset = 0
+        while (offset < buffer.length) {
+          const packetLen = readInt(buffer, offset + 0, 4)
+          const headerLen = 16// readInt(buffer,offset + 4,4)
+          const data = buffer.slice(offset + headerLen, offset + packetLen)
+
+          /**
+           * 仅有两处更改
+           * 1. 引入pako做message解压处理，具体代码链接如下
+           *    https://github.com/nodeca/pako/blob/master/dist/pako.js
+           * 2. message文本中截断掉不需要的部分，避免JSON.parse时出现问题
+           */
+          const body = textDecoder.decode(pako.inflate(data))
+          if (body) {
+            // 同一条 message 中可能存在多条信息，用正则筛出来
+            // eslint-disable-next-line no-control-regex
+            const group = body.split(/[\x00-\x1F]+/)
+            group.forEach((item) => {
+              try {
+                result.body.push(JSON.parse(item))
+              }
+              catch (e) {
+                // 忽略非 JSON 字符串，通常情况下为分隔符
+              }
+            })
+          }
+
+          offset += packetLen
+        }
+      }
+      else if (result.op === 3) {
+        result.body = {
+          count: readInt(buffer, 16, 4),
+        }
+      }
+      resolve(result)
+    }
+    reader.readAsArrayBuffer(blob)
+  })
+}
+
 export default {
+  encode,
+  decode,
   douyuEncode,
   douyuDecode,
   byteToMsg,

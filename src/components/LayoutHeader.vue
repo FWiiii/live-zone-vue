@@ -1,5 +1,9 @@
 <script setup>
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUserStore } from '../store/userStore'
+import darkIcon from './dark.vue'
+import lightIcon from './light.vue'
 
 const userStore = useUserStore()
 
@@ -15,6 +19,14 @@ const options = [
   {
     value: 'bilibili',
     label: '哔哩哔哩',
+  },
+  {
+    value: 'douyin',
+    label: '抖音',
+  },
+  {
+    value: 'cc',
+    label: '网易CC',
   },
 ]
 
@@ -34,21 +46,36 @@ async function getFavRoom() {
   const data = await res.json()
   favRoom.value = data.data
 }
+
 async function showFavRoom(e) {
   if (!e)
     return
   await getFavRoom()
-  console.log(favRoom.value)
 }
 
 const livingFavRoom = computed(() => {
   return favRoom.value.filter(item => item.isLive)
 })
+
+onMounted(() => {
+  getFavRoom()
+})
+
+const isDark = ref(false || JSON.parse(localStorage.getItem('darkMode')))
+function toggleDark(v) {
+  isDark.value = v
+  if (v)
+    document.documentElement.classList.remove('dark')
+  else
+    document.documentElement.classList.add('dark')
+  localStorage.setItem('darkMode', JSON.stringify(v))
+}
+toggleDark(isDark.value)
 </script>
 
 <template>
   <el-header flex justify-between items-center border-b="~ black solid" class="h-12! px-20!">
-    <router-link :to="{ path: '/' }" decoration-none text-black>
+    <router-link :to="{ path: '/' }" decoration-none text-inherit>
       Live Zone
     </router-link>
     <div flex items-center>
@@ -62,7 +89,7 @@ const livingFavRoom = computed(() => {
       </el-button>
     </div>
     <div flex items-center gap-5>
-      <el-dropdown cursor-pointer trigger="click" @visible-change="showFavRoom">
+      <el-dropdown v-if="userStore.userInfo.uid" cursor-pointer trigger="click" @visible-change="showFavRoom">
         <div class="el-dropdown-link">
           我的关注
         </div>
@@ -70,12 +97,14 @@ const livingFavRoom = computed(() => {
           <div>
             <el-dropdown-item v-for="room, index in livingFavRoom" :key="index">
               <router-link :to="{ path: '/live', query: { id: room.roomId, platform: room.platForm } }" decoration-none>
-                <el-card body-style="padding:10px;display:flex;width:170px">
-                  <img :src="room.ownerHeadPic" alt="" h-10 w-10 rounded-full mr-5>
-                  <div flex flex-col justify-between items-start>
-                    <span>{{ room.ownerName }}</span>
-                    <div bg-red-400 rounded-xl px-1>
-                      直播中
+                <el-card body-style="padding:10px;display:flex;width:160px">
+                  <div flex items-center>
+                    <img :src="room.ownerHeadPic" alt="" h-10 w-10 rounded-full mr-2>
+                    <div flex flex-col justify-between items-start>
+                      <span>{{ room.ownerName }}</span>
+                      <div bg-red-400 rounded-xl px-1>
+                        直播中
+                      </div>
                     </div>
                   </div>
                 </el-card>
@@ -112,6 +141,15 @@ const livingFavRoom = computed(() => {
           </template>
         </el-dropdown>
       </template>
+      <el-switch
+        v-model="isDark"
+        inline-prompt
+        size="large"
+        :active-icon="lightIcon"
+        :inactive-icon="darkIcon"
+        style="--el-switch-off-color: rgba(101, 117, 133, .16);--el-switch-on-color:#f2f2f2"
+        @change="toggleDark"
+      />
     </div>
   </el-header>
 </template>

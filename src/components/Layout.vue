@@ -1,6 +1,10 @@
 <script setup>
+import { computed } from 'vue'
 import { useLayoutStore } from '../store/layoutStore'
 import { useUserStore } from '../store/userStore'
+import LayoutHeader from './LayoutHeader.vue'
+import Login from './Login.vue'
+import Register from './Register.vue'
 
 const layoutStore = useLayoutStore()
 const userStore = useUserStore()
@@ -16,31 +20,35 @@ const direClass = computed(() => {
     <el-container :direction="direClass" :class="[!layoutStore.showAside ? 'h-full of-hidden' : '']">
       <el-aside v-if="layoutStore.showAside" width="200px">
         <el-menu>
-          <router-link to="/recommend">
+          <router-link to="/recommend" decoration-none>
             <el-menu-item index="1">
               推荐
             </el-menu-item>
           </router-link>
 
-          <el-menu-item index="2">
-            <span>关注</span>
-          </el-menu-item>
+          <router-link to="/follow" decoration-none>
+            <el-menu-item index="2">
+              关注
+            </el-menu-item>
+          </router-link>
 
-          <router-link to="/platforms">
+          <router-link to="/platforms" decoration-none>
             <el-menu-item index="3">
               平台
             </el-menu-item>
           </router-link>
-
-          <el-menu-item index="4">
-            <span>分区</span>
-          </el-menu-item>
+          <router-link to="/areas" decoration-none>
+            <el-menu-item index="4">
+              分区
+            </el-menu-item>
+          </router-link>
         </el-menu>
       </el-aside>
       <el-main class="m-0! p-0!">
-        <router-view />
+        <router-view :key="$route.name + ($route.query.id || '') + ($route.query.platform || '')" />
       </el-main>
     </el-container>
   </el-container>
   <Login v-if="userStore.showLoginDialog" />
+  <!-- <Register v-if="true" /> -->
 </template>

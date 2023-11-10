@@ -1,233 +1,38 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import Artplayer from 'artplayer'
-import flvjs from 'flv.js'
-import Hls from 'hls.js'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import Danmaku from 'danmaku/dist/esm/danmaku.canvas.js'
+import { useRoute } from 'vue-router'
 import Global from '../utils/danmaku'
-import { nummberFormat } from '../utils/index'
+import { getPlatformName, nummberFormat } from '../utils/index'
+import { useUserStore } from '../store/userStore'
+import Artplayer from '../components/Artplayer.vue'
 
-const comp = reactive({
+const comp = {
   ws: null,
   interval: null,
   art: null,
-})
+  danmaku: null,
+}
 
 const route = useRoute()
-const id = route.query.id
-const platform = route.query.platform
+const id = ref('')
+const platform = ref('')
 const liveRoomInfo = ref(null)
-const liveSource = ref(null)
+const userStore = useUserStore()
+const uid = userStore.userInfo.uid
+
+id.value = route.query.id
+platform.value = route.query.platform
 async function getLiveRoomInfo() {
-  const p1 = fetch(`http://live.yj1211.work/api/live/getRoomInfo?platform=${platform}&roomId=${id}`).then(res => res.json())
-  const p2 = fetch(`http://live.yj1211.work/api/live/getRealUrlMultiSource?platform=${platform}&roomId=${id}`).then(res => res.json())
-  const allPromise = Promise.all([p1, p2])
-  const [d1, d2] = await allPromise
-  liveRoomInfo.value = d1.data
-  liveSource.value = d2.data
+  const res = await fetch(`http://live.yj1211.work/api/live/getRoomInfo?platform=${platform.value}&roomId=${id.value}&uid=${uid}`)
+  const data = await res.json()
+  liveRoomInfo.value = data.data
 }
 
-const liveSourceInfo = reactive({
-  selectSource: '',
-  selectRate: '',
-  rateSourceSelector: [],
-  sourceAndRateMap: new Map(),
-  rateSelector: [],
-  playUrl: '',
-})
+const danmuShow = ref(true)
 
-function setLiveSourceInfo() {
-  const d = liveSource.value
-  const qualityMap = new Map()
-
-  for (const key in d) {
-    if (d.hasOwnProperty(key))
-      qualityMap.set(key, d[key])
-  }
-
-  const lastSelectSource = localStorage.getItem(`urlSource${liveRoomInfo.value.platform}`)
-  const lastSelectRate = localStorage.getItem(`urlRate${liveRoomInfo.value.platform}`)
-
-  // 设置当前选中的线路(需要根据上次选中的线路判断)
-  if (lastSelectSource != null && qualityMap.has(lastSelectSource))
-    liveSourceInfo.selectSource = lastSelectSource
-
-  else
-    liveSourceInfo.selectSource = qualityMap.keys().next().value
-
-  // 设置当前选中的清晰度(需要根据上次选中的判断)
-  const lastSelectQualityList = qualityMap.get(liveSourceInfo.selectSource)
-  if (lastSelectRate != null) {
-    lastSelectQualityList.forEach((quality) => {
-      if (quality.qualityName === lastSelectRate)
-        liveSourceInfo.selectRate = lastSelectRate
-    })
-  }
-  if (liveSourceInfo.selectRate === '')
-    liveSourceInfo.selectRate = lastSelectQualityList[0].qualityName
-
-  qualityMap.forEach((qualityList, sourceName) => {
-    // 渲染线路
-    const isSelectSource = liveSourceInfo.selectSource === sourceName
-    liveSourceInfo.rateSourceSelector.push({
-      default: isSelectSource,
-      html: sourceName,
-    })
-
-    // 处理清晰度
-    qualityList.forEach((quality) => {
-      const rateName = quality.qualityName
-      if (rateName.includes('PRO'))
-        return
-
-      const isSelectRate = liveSourceInfo.selectRate === rateName
-      liveSourceInfo.sourceAndRateMap.set(`${sourceName}===${rateName}`, quality.playUrl)
-      // 渲染清晰度
-      if (isSelectSource) {
-        liveSourceInfo.rateSelector.push({
-          default: isSelectRate,
-          html: rateName,
-        })
-        if (isSelectRate)
-          liveSourceInfo.playUrl = quality.playUrl
-      }
-    })
-  })
-}
-
-function createPlayer() {
-  comp.art = new Artplayer({
-    container: '.artplayer-app',
-    autoplay: true, // 自动播放
-    isLive: true, // 直播
-    url: liveSourceInfo.playUrl,
-    type: liveSourceInfo.playUrl.indexOf('m3u8') > 0 ? 'customHls' : 'flv',
-    autoSize: true, // 固定视频比例
-    pip: true, // 画中画
-    fullscreen: true, // 全屏按钮
-    aspectRatio: true, // 长宽比
-    setting: true, // 设置按钮
-    fullscreenWeb: true, // 网页全屏按钮
-    volume: 0, // 默认音量
-    flip: true, // 翻转
-    screenshot: true, // 截图
-    mutex: false, // 假如页面里同时存在多个播放器，是否只能让一个播放器播放
-    lang: 'zh-cn', //
-    airplay: true,
-    customType: {
-      customHls(video, url, art) {
-        console.log('播放customHls')
-        if (Hls.isSupported()) {
-          console.log('customHls==isSupported')
-          const hls = new Hls()
-          hls.loadSource(url)
-          hls.attachMedia(video)
-          // optional
-          art.hls = hls
-          art.once('destroy', () => hls.destroy())
-        }
-        else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          console.log('application/vnd.apple.mpegurl')
-          video.src = url
-        }
-        else {
-          console.log('Unsupported playback format: m3u8')
-          art.notice.show = 'Unsupported playback format: m3u8'
-        }
-      },
-      flv(video, url, art) {
-        if (flvjs.isSupported()) {
-          console.log('播放flv')
-          const flv = flvjs.createPlayer({ type: 'flv', url })
-          try {
-            flv.attachMediaElement(video)
-          }
-          catch (error) {
-            console.log(error)
-          }
-          flv.load()
-          // optional
-          art.flv = flv
-          art.on('destroy', () => {
-            console.log('destroyFlv')
-            flv.destroy()
-          })
-        }
-        else {
-          art.notice.show = 'Unsupported playback format: flv'
-        }
-      },
-    },
-    controls: [
-      // {
-      // 	tooltip: '弹幕开关',
-      // 	position: 'right',
-      // 	html: '<i class="iconfont icon-danmukaiqi" style="font-size: 25px"></i>',
-      // 	click: function () {
-      // 		_this.danmuShow = !_this.danmuShow;
-      // 		if (_this.danmuShow) {
-      // 			document
-      // 				.getElementsByClassName('iconfont icon-danmuguanbi')[0]
-      // 				.setAttribute('class', 'iconfont icon-danmukaiqi');
-      // 			_this.danmaku.show();
-      // 		} else {
-      // 			document
-      // 				.getElementsByClassName('iconfont icon-danmukaiqi')[0]
-      // 				.setAttribute('class', 'iconfont icon-danmuguanbi');
-      // 			_this.danmaku.hide();
-      // 		}
-      // 	}
-      // },
-      {
-        name: 'rateSource',
-        position: 'right',
-        html: liveSourceInfo.selectSource,
-        style: {
-          marginRight: '5px',
-        },
-        selector: liveSourceInfo.rateSourceSelector,
-        onSelect(item) {
-          changPlayUrl(item.html, liveSourceInfo.selectRate, comp.art)
-          return item.html
-        },
-      },
-      {
-        name: 'rate',
-        position: 'right',
-        html: liveSourceInfo.selectRate,
-        selector: liveSourceInfo.rateSelector,
-        onSelect(item) {
-          changPlayUrl(liveSourceInfo.selectSource, item.html, comp.art)
-          return item.html
-        },
-      },
-    ],
-  })
-}
-
-function changPlayUrl(source, rate, art) {
-  const playUrl = liveSourceInfo.sourceAndRateMap.get(`${source}===${rate}`)
-  localStorage.setItem(`urlSource${liveRoomInfo.value.platform}`, source)
-  localStorage.setItem(`urlRate${liveRoomInfo.value.platform}`, rate)
-  console.info(`切换直播源:${source}===${rate}`)
-  // 关闭之前的流
-  switch (art.type) {
-    case 'flv':
-      art.flv.unload()
-      break
-    case 'customHls':
-      art.hls.stopLoad()
-      break
-    default:
-      break
-  }
-  if (playUrl.includes('.flv'))
-    art.type = 'flv'
-
-  else
-    art.type = 'customHls'
-
-  console.log(playUrl)
-  art.switchUrl(playUrl)
+function setCompArt(art) {
+  comp.art = art
 }
 
 const danmuList = ref([])
@@ -237,10 +42,9 @@ function initDouyuWs() {
   const ws = new WebSocket('wss://danmuproxy.douyu.com:8503/')
   comp.ws = ws
   const roomId = id
-  // const _this = this
   ws.onopen = function () {
-    const loginMsg = Global.douyuEncode(`type@=loginreq/roomid@=${roomId}/`)
-    const joinGroupMsg = Global.douyuEncode(`type@=joingroup/rid@=${roomId}/gid@=1/`)
+    const loginMsg = Global.douyuEncode(`type@=loginreq/roomid@=${roomId.value}/`)
+    const joinGroupMsg = Global.douyuEncode(`type@=joingroup/rid@=${roomId.value}/gid@=1/`)
     const heartBeatMsg = Global.douyuEncode('type@=mrkl/')
     ws.send(heartBeatMsg)
     ws.send(loginMsg)
@@ -254,16 +58,15 @@ function initDouyuWs() {
     const packet = await Global.douyuDecode(msg.data)
     switch (packet.body.type) {
       case 'loginres':
-        console.log('获取直播间弹幕成功')
+        // console.log('获取直播间弹幕成功')
         break
       case 'chatmsg':
         // if (_this.isBanned(packet.body.level, packet.body.txt))
         // _this.emitDanmu(packet.body.txt, packet.body.nn)
-        if (danmuList.value.length <= danmuLength.value) { danmuList.value.push({ msg: packet.body.txt, user: packet.body.nn, id: createRandomId(2) }) }
-        else {
+        if (danmuList.value.length > danmuLength.value)
           danmuList.value.shift()
-          danmuList.value.push({ msg: packet.body.txt, user: packet.body.nn, id: createRandomId(2) })
-        }
+        danmuList.value.push({ msg: packet.body.txt, user: packet.body.nn, id: createRandomId(2) })
+        emitDanmu(packet.body.txt)
 
         break
     }
@@ -272,7 +75,7 @@ function initDouyuWs() {
 
 function initHuyaWs() {
   fetch(
-        `http://live.yj1211.work/api/live/getHuyaInfo?roomId=${id}`,
+        `http://live.yj1211.work/api/live/getHuyaInfo?roomId=${id.value}`,
   )
     .then(async (response) => {
       const res = await response.json()
@@ -297,26 +100,98 @@ function initHuyaWs() {
           const msg_obj = Global._on_mes(this.result) || ''
           if (msg_obj.type === 'chat') {
             // if (_this.isBanned('999', msg_obj.content))
-            if (danmuList.value.length <= danmuLength.value) { danmuList.value.push({ msg: msg_obj.content, user: msg_obj.name, id: createRandomId(2) }) }
-            else {
+            if (danmuList.value.length > danmuLength.value)
               danmuList.value.shift()
-              danmuList.value.push({ msg: msg_obj.content, user: msg_obj.name, id: createRandomId(2) })
-            }
+            danmuList.value.push({ msg: msg_obj.content, user: msg_obj.name, id: createRandomId(2) })
+            emitDanmu(msg_obj.content)
           }
         }
       }
     })
 }
 
+function initBilibiliWs() {
+  const ws = new WebSocket('wss://broadcastlv.chat.bilibili.com:2245/sub')
+  comp.ws = ws
+  ws.onopen = function () {
+    const sendInfo = Global.encode(JSON.stringify({
+      roomid: Number(id.value),
+    }), 7)
+    ws.send(sendInfo)
+  }
+  comp.interval = setInterval(() => {
+    ws.send(Global.encode('', 2))
+  }, 30000)
+  ws.onmessage = async function (msgEvent) {
+    const packet = await Global.decode(msgEvent.data)
+    switch (packet.op) {
+      case 8:
+        console.log('获取直播间弹幕成功')
+        break
+      case 5:
+        packet.body.forEach((body) => {
+          switch (body.cmd) {
+            case 'DANMU_MSG':
+              // if (_this.isBanned(body.info[4][0], `${body.info[1]}`))
+              if (danmuList.value.length > danmuLength.value)
+                danmuList.value.shift()
+              danmuList.value.push({ msg: body.info[1], user: body.info[2][1], id: createRandomId(2) })
+              emitDanmu(body.info[1])
+              break
+          }
+        })
+        break
+    }
+  }
+}
+
 function createRandomId(length) {
   return +(Math.random().toString().substring(2, length) + Date.now()).toString(36)
 }
 
-function initDanmu() {
-  if (platform === 'douyu')
+function initDanmuWs() {
+  if (platform.value === 'douyu')
     initDouyuWs()
-  else if (platform === 'huya')
+  else if (platform.value === 'huya')
     initHuyaWs()
+  else if (platform.value === 'bilibili')
+    initBilibiliWs()
+}
+
+function initDanmaku(el) {
+  comp.danmaku = new Danmaku({
+    container: el,
+    engine: 'canvas',
+  })
+}
+
+function resizeDanmaku() {
+  comp.danmaku.resize()
+}
+
+function toggledanmukuShow(show) {
+  danmuShow.value = !danmuShow.value
+  if (show)
+    comp.danmaku.show()
+  else
+    comp.danmaku.hide()
+  comp.danmaku.clear()
+}
+
+function emitDanmu(text) {
+  const someDanmakuAObj = {
+    text,
+    style: {
+      font: '20px sans-serif',
+      textAlign: 'start',
+      textBaseline: 'bottom',
+      direction: 'inherit',
+      fillStyle: '#fff',
+      strokeStyle: '#fff',
+      lineWidth: 1.0,
+    },
+  }
+  comp.danmaku.emit(someDanmakuAObj)
 }
 
 const danmuScroll = ref(null)
@@ -326,25 +201,69 @@ const lockScroll = ref(true)
 watch(() => danmuList.value[danmuList.value.length - 1], () => {
   if (!lockScroll.value)
     return
-  nextTick(() => {
-    danmuScroll.value.setScrollTop(danmuWrapper.value.clientHeight + 100)
-  })
-})
+  danmuScroll.value && danmuScroll.value.setScrollTop(danmuWrapper.value.clientHeight + 100)
+}, { flush: 'post' })
 
-onMounted(async () => {
-  await getLiveRoomInfo()
-  setLiveSourceInfo()
-  createPlayer()
-  initDanmu()
-})
+const followLoading = ref(false)
+async function handleFollow() {
+  followLoading.value = true
+  if (liveRoomInfo.value.isFollowed) {
+    await fetch(`http://live.yj1211.work/api/live/unFollow?platform=${platform.value}&roomId=${id.value}&uid=${uid}`)
+    liveRoomInfo.value.isFollowed = false
+  }
+  else {
+    await fetch(`http://live.yj1211.work/api/live/follow?platform=${platform.value}&roomId=${id.value}&uid=${uid}`)
+    liveRoomInfo.value.isFollowed = true
+  }
+  followLoading.value = false
+}
 
-onBeforeUnmount(() => {
+function getUrl() {
+  if (platform.value === 'bilibili')
+    return `https://live.bilibili.com/${id.value}`
+
+  if (platform.value === 'douyu')
+    return `https://www.douyu.com/${id.value}`
+
+  if (platform.value === 'huya')
+    return `https://m.huya.com/${id.value}`
+
+  if (platform.value === 'cc')
+    return `https://cc.163.com/${id.value}`
+}
+
+function unmount() {
+  danmuList.value = []
   if (comp.interval)
     clearInterval(comp.interval)
   if (comp.ws)
     comp.ws.close()
-  if (comp.art)
+  if (comp.art?.destroy)
     comp.art.destroy()
+  if (comp.danmaku)
+    comp.danmaku.destroy()
+  document.title = 'Live Zone'
+}
+
+async function init() {
+  const danmuInterval = setInterval(() => {
+    const el = document.querySelector('.art-danmuku')
+    if (el) {
+      initDanmaku(el)
+      clearInterval(danmuInterval)
+      initDanmuWs()
+    }
+  }, 500)
+  await getLiveRoomInfo()
+  document.title = liveRoomInfo.value.ownerName
+}
+
+onMounted(async () => {
+  init()
+})
+
+onBeforeUnmount(() => {
+  unmount()
 })
 </script>
 
@@ -352,20 +271,45 @@ onBeforeUnmount(() => {
   <el-container h-full w-full>
     <el-main class="p-0!">
       <div h-full flex flex-col>
-        <div class="artplayer-app h-570px" bg-black w-full flex items-center />
-        <div v-if="liveRoomInfo" flex-1 h-full flex items-center p-2 box-border>
-          <img :src="liveRoomInfo.ownerHeadPic" alt="" h-16 w-16 rounded-full mr-4>
-          <div flex flex-col justify-between h-full>
-            <div text-sm>
-              <span font-bold>{{ liveRoomInfo.ownerName }}</span>
-              <span :class="[+liveRoomInfo.isLive ? 'bg-black text-white' : 'bg-gray']" ml-2 p-1 rounded-xl font-thin>{{ +liveRoomInfo.isLive ? 'Online' : 'Offline' }}</span>
+        <Artplayer :id="id" :platform="platform" :comp="comp" :danmu-show="danmuShow" @resizeDanmaku="resizeDanmaku" @toggledanmuShow="danmuShow = !danmuShow" @toggledanmukuShow="toggledanmukuShow" @setCompArt="setCompArt" />
+        <div v-if="liveRoomInfo" flex-1 h-full flex justify-between items-center px-8 py-2 box-border>
+          <div flex items-center h-full>
+            <img :src="liveRoomInfo.ownerHeadPic" alt="" h-16 w-16 rounded-full mr-4>
+            <div flex flex-col justify-between h-full>
+              <div>
+                <span font-600 text-sm>{{ liveRoomInfo.ownerName }}</span>
+                <span :class="[+liveRoomInfo.isLive ? 'bg-#9f1239/50' : 'bg-#e5e5e5/50']" ml-2 text-xs rounded font-light>{{ +liveRoomInfo.isLive ? 'Online' : 'Offline' }}</span>
+              </div>
+              <span font-800>{{ liveRoomInfo.roomName }}</span>
+              <span text-xs font-light>
+                {{ getPlatformName(liveRoomInfo.platForm) }}
+                {{ liveRoomInfo.categoryName }}
+                🔥{{ nummberFormat(liveRoomInfo.online) }}
+              </span>
             </div>
-            <span font-800>{{ liveRoomInfo.roomName }}</span>
-            <span text-xs font-light>
-              {{ liveRoomInfo.platForm }}
-              {{ liveRoomInfo.categoryName }}
-              🔥{{ nummberFormat(liveRoomInfo.online) }}
-            </span>
+          </div>
+          <div>
+            <el-button v-if="true" mr-2 plain text-center h-7 line-height-7 :loading="followLoading" @click="handleFollow">
+              <template #icon>
+                <svg
+                  v-if="liveRoomInfo.isFollowed
+                  " xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32"
+                >
+                  <path fill="currentColor" d="m16 2l-4.55 9.22l-10.17 1.47l7.36 7.18L6.9 30l9.1-4.78L25.1 30l-1.74-10.13l7.36-7.17l-10.17-1.48Z" />
+                </svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                  <path fill="currentColor" d="m16 6.52l2.76 5.58l.46 1l1 .15l6.16.89l-4.38 4.3l-.75.73l.18 1l1.05 6.13l-5.51-2.89L16 23l-.93.49l-5.51 2.85l1-6.13l.18-1l-.74-.77l-4.42-4.35l6.16-.89l1-.15l.46-1L16 6.52M16 2l-4.55 9.22l-10.17 1.47l7.36 7.18L6.9 30l9.1-4.78L25.1 30l-1.74-10.13l7.36-7.17l-10.17-1.48Z" />
+                </svg>
+              </template>
+              {{ !!liveRoomInfo.isFollowed ? '已关注' : '关注' }}
+            </el-button>
+            <a :href="getUrl()" target="_blank">
+              <el-button plain text-center h-7 line-height-7>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 32 32">
+                  <path fill="currentColor" d="M29.25 6.76a6 6 0 0 0-8.5 0l1.42 1.42a4 4 0 1 1 5.67 5.67l-8 8a4 4 0 1 1-5.67-5.66l1.41-1.42l-1.41-1.42l-1.42 1.42a6 6 0 0 0 0 8.5A6 6 0 0 0 17 25a6 6 0 0 0 4.27-1.76l8-8a6 6 0 0 0-.02-8.48Z" /><path fill="currentColor" d="M4.19 24.82a4 4 0 0 1 0-5.67l8-8a4 4 0 0 1 5.67 0A3.94 3.94 0 0 1 19 14a4 4 0 0 1-1.17 2.85L15.71 19l1.42 1.42l2.12-2.12a6 6 0 0 0-8.51-8.51l-8 8a6 6 0 0 0 0 8.51A6 6 0 0 0 7 28a6.07 6.07 0 0 0 4.28-1.76l-1.42-1.42a4 4 0 0 1-5.67 0Z" />
+                </svg>
+              </el-button>
+            </a>
           </div>
         </div>
       </div>

@@ -7,7 +7,9 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AreaCard: typeof import('./src/components/AreaCard.vue')['default']
     Artplayer: typeof import('./src/components/Artplayer.vue')['default']
+    Dark: typeof import('./src/components/dark.vue')['default']
     ElAside: typeof import('element-plus/es')['ElAside']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCard: typeof import('element-plus/es')['ElCard']
@@ -26,9 +28,12 @@ declare module 'vue' {
     ElRow: typeof import('element-plus/es')['ElRow']
     ElScrollbar: typeof import('element-plus/es')['ElScrollbar']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSwitch: typeof import('element-plus/es')['ElSwitch']
     Layout: typeof import('./src/components/Layout.vue')['default']
     LayoutHeader: typeof import('./src/components/LayoutHeader.vue')['default']
+    Light: typeof import('./src/components/light.vue')['default']
     Login: typeof import('./src/components/Login.vue')['default']
+    Register: typeof import('./src/components/Register.vue')['default']
     RoomCard: typeof import('./src/components/RoomCard.vue')['default']
     RoomList: typeof import('./src/components/RoomList.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

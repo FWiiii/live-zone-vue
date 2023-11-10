@@ -38,9 +38,19 @@ const router = createRouter({
           component: () => import('../views/LiveRoom.vue'),
         },
         {
-          path: '/test',
-          name: 'test',
-          component: () => import('../views/Test.vue'),
+          path: '/follow',
+          name: 'follow',
+          component: () => import('../views/Follow.vue'),
+        },
+        {
+          path: '/areas',
+          name: 'areas',
+          component: () => import('../views/Areas.vue'),
+        },
+        {
+          path: '/area',
+          name: 'area',
+          component: () => import('../views/AreaRecommend.vue'),
         },
       ],
     },
