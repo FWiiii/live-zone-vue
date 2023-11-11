@@ -59,7 +59,6 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const layoutStore = useLayoutStore()
   const userStore = useUserStore()
   if (to.path === '/search') {
     if (!userStore.userInfo?.uid) {
@@ -67,16 +66,22 @@ router.beforeEach((to, from, next) => {
       next({ path: from.path })
     }
     else {
-      layoutStore.showAside = false
       next()
     }
   }
-  else if (to.path === '/live') {
-    layoutStore.showAside = false
+  else {
+    next()
+  }
+})
+
+router.afterEach((to, next) => {
+  const layoutStore = useLayoutStore()
+  if (to.path !== '/search' && to.path !== '/live') {
+    layoutStore.showAside = true
     next()
   }
   else {
-    layoutStore.showAside = true
+    layoutStore.showAside = false
     next()
   }
 })
